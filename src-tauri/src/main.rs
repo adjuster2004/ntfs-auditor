@@ -311,10 +311,12 @@ async fn load_session(load_path: String) -> Result<AuditSession, String> {
 }
 
 #[tauri::command]
-async fn export_to_excel(tree: FolderNode, save_path: String) -> Result<(), String> {
+async fn export_to_excel(window: tauri::Window, tree: FolderNode, save_path: String) -> Result<(), String> {
     let mut workbook = Workbook::new();
     let header_format = Format::new().set_bold().set_background_color(Color::RGB(0xD3D3D3));
     
+	let _ = window.emit("export-progress", "Генерация детального списка...");
+	
     // --- ЛИСТ 1: ДЕТАЛЬНЫЙ СПИСОК ---
     let worksheet1 = workbook.add_worksheet();
     worksheet1.set_name("Детальный список").map_err(|e| e.to_string())?;
@@ -365,6 +367,8 @@ async fn export_to_excel(tree: FolderNode, save_path: String) -> Result<(), Stri
     }
 
     process_node(&tree, worksheet1, &mut row, &mut all_paths, &mut all_accounts, &mut matrix_data)?;
+	
+	let _ = window.emit("export-progress", "Формирование матрицы прав...");
 
     // --- ЛИСТ 2: МАТРИЦА ПРАВ ---
     let worksheet2 = workbook.add_worksheet();
@@ -388,6 +392,8 @@ async fn export_to_excel(tree: FolderNode, save_path: String) -> Result<(), Stri
             }
         }
     }
+	
+	let _ = window.emit("export-progress", "Начинаю опрос состава групп...");
 
     // --- ЛИСТ 3: СОСТАВ ГРУПП ---
     let worksheet3 = workbook.add_worksheet();
@@ -397,9 +403,14 @@ async fn export_to_excel(tree: FolderNode, save_path: String) -> Result<(), Stri
     worksheet3.write_string_with_format(0, 1, "Участник", &header_format).map_err(|e| e.to_string())?;
 
     let mut row3 = 1;
-    for acc in &sorted_accounts {
+	
+	let total_accs = sorted_accounts.len();
+	
+    for (idx, acc) in sorted_accounts.iter().enumerate() {
         if acc.contains("СИСТЕМА") || acc.contains("ВЛАДЕЛЕЦ") { continue; }
         
+		let _ = window.emit("export-progress", &format!("Анализ участников: {} ({}/{})", acc, idx + 1, total_accs));
+		
         let members = get_group_members(acc);
         if !members.is_empty() {
             for m in members {
@@ -414,8 +425,11 @@ async fn export_to_excel(tree: FolderNode, save_path: String) -> Result<(), Stri
             row3 += 1;
         }
     }
-
+	
+	let _ = window.emit("export-progress", "Сохранение файла на диск...");
+	
     workbook.save(&save_path).map_err(|e| e.to_string())?;
+	let _ = window.emit("export-progress", "Экспорт завершен успешно!");
     Ok(())
 }
 
