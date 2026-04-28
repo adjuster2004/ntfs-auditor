@@ -226,6 +226,7 @@ export default function App() {
   const [knownAccounts, setKnownAccounts] = useState<string[]>([]); // Словарь для автодополнения
   const [status, setStatus] = useState("Готов");
   const [isScanning, setIsScanning] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [currentPath, setCurrentPath] = useState("");
   
   const [scanDepth, setScanDepth] = useState<number>(3); // По умолчанию глубина 3
@@ -246,10 +247,19 @@ export default function App() {
   }, [treeData]);
 
   useEffect(() => {
-    let unlisten: any;
-    async function setupListen() { unlisten = await listen<string>("scan-progress", (e) => setCurrentPath(e.payload)); }
+    let unlistenScan: any;
+    let unlistenExport: any;
+    async function setupListen() { 
+      // Слушаем сканирование папок
+      unlistenScan = await listen<string>("scan-progress", (e) => setCurrentPath(e.payload)); 
+      // Слушаем процесс экспорта и пишем прямо в статус бар
+      unlistenExport = await listen<string>("export-progress", (e) => setStatus(e.payload)); 
+    }
     setupListen();
-    return () => { if (unlisten) unlisten(); };
+    return () => { 
+      if (unlistenScan) unlistenScan(); 
+      if (unlistenExport) unlistenExport();
+    };
   }, []);
 
   const selectDirectory = async () => {
@@ -289,11 +299,18 @@ export default function App() {
     try {
       const filePath = await save({ filters: [{ name: "Excel", extensions: ["xlsx"] }], defaultPath: "audit_report.xlsx" });
       if (filePath) {
+        setIsExporting(true); // <-- Блокируем кнопку
+        setStatus("Подготовка к выгрузке..."); // <-- Пишем начальный статус
+        
         await invoke("export_to_excel", { tree: treeData, savePath: filePath });
-        alert("Файл успешно сохранен! В нем содержатся ВСЕ собранные права.");
+        
+        alert("Файл успешно сохранен! В нем содержатся ВСЕ собранные права и матрицы.");
       }
     } catch (e) {
       alert(`Ошибка при сохранении: ${e}`);
+      setStatus("Ошибка экспорта.");
+    } finally {
+      setIsExporting(false); // <-- Возвращаем кнопку в нормальное состояние
     }
   };
 
@@ -365,8 +382,15 @@ export default function App() {
 		{/* --- ВОТ НАША КНОПКА EXCEL --- */}
         <div style={{ borderLeft: "1px solid #ddd", height: "30px", margin: "0 10px" }} />
         
-        <button onClick={handleExport} disabled={!treeData || isScanning} style={{ padding: "8px 20px", borderRadius: "6px", border: "none", backgroundColor: (!treeData || isScanning) ? "#e0e0e0" : "#fb8c00", color: "#fff", cursor: (!treeData || isScanning) ? "default" : "pointer", fontWeight: "bold" }}>
-          Выгрузить Excel
+        <button 
+          onClick={handleExport} 
+          disabled={!treeData || isScanning || isExporting} 
+          style={{ 
+            padding: "8px 20px", borderRadius: "6px", border: "none", 
+            backgroundColor: (!treeData || isScanning || isExporting) ? "#e0e0e0" : "#fb8c00", 
+            color: "#fff", cursor: (!treeData || isScanning || isExporting) ? "default" : "pointer", fontWeight: "bold" 
+          }}>
+          {isExporting ? "⏳ Сохранение..." : "Выгрузить Excel"}
         </button>
       		
       </div>
