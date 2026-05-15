@@ -13,9 +13,13 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "ntfs-auditor",
-        "width": 800,
-        "height": 600
+        "title": "NTFS Auditor",
+        "width": 1024,
+        "height": 768,
+        "minWidth": 950, 
+        "minHeight": 500,
+        "resizable": true,
+        "fullscreen": false
       }
     ],
     "security": {
