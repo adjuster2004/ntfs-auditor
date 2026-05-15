@@ -545,6 +545,50 @@ fn get_group_members(name: &str) -> Vec<String> {
     members
 }
 
+#[tauri::command]
+async fn search_ad_accounts(query: String) -> Result<Vec<String>, String> {
+    if query.len() < 3 { return Ok(vec![]); }
+
+    let ps_cmd = r#"
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
+        $q = $env:AD_SEARCH_QUERY;
+        $results = @();
+        try {
+            $searcher = [DirectoryServices.DirectorySearcher]::new();
+            $searcher.Filter = "(|(sAMAccountName=*$q*)(name=*$q*)(displayName=*$q*)(sn=*$q*)(givenName=*$q*))";
+            $searcher.SizeLimit = 15;
+            
+            foreach ($res in $searcher.FindAll()) {
+                $sam = $res.Properties['samaccountname'][0]
+                $name = $res.Properties['name'][0]
+                if ($name) {
+                    $results += "$name ($sam)"
+                } else {
+                    $results += $sam
+                }
+            }
+        } catch {}
+        $results | Select-Object -Unique
+    "#;
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let output = std::process::Command::new("powershell")
+        .creation_flags(CREATE_NO_WINDOW)
+        .env("AD_SEARCH_QUERY", &query)
+        .args(&["-NoProfile", "-Command", ps_cmd])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let mut accounts = Vec::new();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let acc = line.trim();
+        if !acc.is_empty() { accounts.push(acc.to_string()); }
+    }
+
+    Ok(accounts)
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(AppState { 
@@ -556,10 +600,10 @@ fn main() {
             scan_directory_tree, 
             get_user_sids, 
             export_to_excel,
+			search_ad_accounts,
             cancel_scan,
             save_session,
             load_session,
-            // НОВЫЕ КОМАНДЫ ЗДЕСЬ:
             restore_inheritance_with_sddl, 
             revert_acl, 
             add_permission
